@@ -1,0 +1,188 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notepad Pribadi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Konfigurasi Firebase (Isi dengan config milik Anda)
+        const firebaseConfig = {
+          apiKey: "AIzaSyDroZm6lszC_GYHim6AB4phb5-clCYfL2M",
+  authDomain: "notepad-355e9.firebaseapp.com",
+  projectId: "notepad-355e9",
+  storageBucket: "notepad-355e9.firebasestorage.app",
+  messagingSenderId: "185131514507",
+  appId: "1:185131514507:web:e29e0cc5da5cc954a1b28e"
+        };
+
+        // Inisialisasi hanya jika config sudah diisi (menghindari error jika sengaja kosong)
+        let app, auth, db;
+        if (Object.keys(firebaseConfig).length > 0) {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        }
+
+        const authPage = document.getElementById('auth-page');
+        const notepadPage = document.getElementById('notepad-page');
+        const noteArea = document.getElementById('note-area');
+        const emailInput = document.getElementById('email');
+        const passInput = document.getElementById('password'); // Variabel ini yang kita pakai
+
+        // Sistem Notifikasi Kustom (Pengganti alert)
+        window.showToast = (msg) => {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        };
+
+        // Sistem Konfirmasi Kustom (Pengganti confirm)
+        window.showConfirm = (msg, onConfirmCallback) => {
+            const modal = document.getElementById('confirm-modal');
+            document.getElementById('confirm-text').textContent = msg;
+            modal.classList.remove('hidden');
+            
+            document.getElementById('btn-cancel').onclick = () => modal.classList.add('hidden');
+            document.getElementById('btn-confirm').onclick = () => {
+                modal.classList.add('hidden');
+                onConfirmCallback();
+            };
+        };
+
+        // KOREKSI 1: Daftarkan ke window karena kita menggunakan type="module"
+        window.togglePassword = () => {
+            // KOREKSI 2: Gunakan passInput yang sudah dideklarasikan, bukan passwordInput
+            const type = passInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passInput.setAttribute('type', type);
+        };
+
+        if (auth) {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    authPage.classList.add('hidden');
+                    notepadPage.classList.remove('hidden');
+                    loadNote(user.uid);
+                } else {
+                    authPage.classList.remove('hidden');
+                    notepadPage.classList.add('hidden');
+                }
+            });
+        }
+
+        window.handleAuth = async (isRegister) => {
+            if(!auth) return showToast("Konfigurasi Firebase belum diisi!");
+            try {
+                if (isRegister) await createUserWithEmailAndPassword(auth, emailInput.value, passInput.value);
+                else await signInWithEmailAndPassword(auth, emailInput.value, passInput.value);
+            } catch (e) { 
+                showToast("Error: " + e.message); 
+            }
+        };
+
+        window.logout = () => signOut(auth);
+
+        window.saveNote = async () => {
+            const user = auth.currentUser;
+            if (user) {
+                await setDoc(doc(db, "notes", user.uid), { content: noteArea.value });
+                showToast("Catatan berhasil tersimpan!");
+            }
+        };
+
+        window.deleteAccount = async () => {
+            // Menggunakan custom confirm
+            showConfirm("Apakah Anda yakin ingin menghapus akun dan semua catatan Anda secara permanen?", async () => {
+                try {
+                    const user = auth.currentUser;
+                    // Hapus dokumen catatan di Firestore
+                    await deleteDoc(doc(db, "notes", user.uid));
+                    // Hapus akun di Auth
+                    await deleteUser(user);
+                    showToast("Akun berhasil dihapus.");
+                } catch (e) { 
+                    showToast("Gagal menghapus akun: " + e.message); 
+                }
+            });
+        };
+
+        async function loadNote(uid) {
+            try {
+                const docRef = doc(db, "notes", uid);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) noteArea.value = docSnap.data().content;
+                else noteArea.value = "";
+            } catch (e) {
+                console.error("Gagal memuat catatan", e);
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 p-4">
+    <!-- Toast Notification Container -->
+    <div id="toast" class="fixed top-5 right-5 bg-gray-800 text-white px-4 py-2 rounded shadow-lg hidden transition-opacity z-50"></div>
+
+    <!-- Confirm Modal Container -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-4 text-center">
+            <h3 class="text-lg font-bold mb-2">Konfirmasi</h3>
+            <p id="confirm-text" class="mb-6 text-gray-600">Apakah Anda yakin?</p>
+            <div class="flex justify-center gap-3">
+                <button id="btn-cancel" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-medium transition">Batal</button>
+                <button id="btn-confirm" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-medium transition">Ya, Lanjutkan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Halaman Login/Auth -->
+    <div id="auth-page" class="max-w-md mx-auto mt-20 bg-white p-6 rounded-lg shadow-md">
+        <h1 class="text-2xl mb-6 font-bold text-center text-gray-800">Notepad Login</h1>
+        
+        <div class="mb-4">
+            <input id="email" type="email" placeholder="Alamat Email" class="w-full border border-gray-300 p-3 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        
+        <!-- KOREKSI 3: Input Password dan Ikon Mata harus dibungkus dalam div relative -->
+        <div class="relative mb-6">
+            <!-- Tambahkan pr-10 agar text tidak menabrak ikon mata -->
+            <input id="password" type="password" placeholder="Password" class="w-full border border-gray-300 p-3 pr-10 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button 
+                type="button" 
+                onclick="togglePassword()"
+                class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-blue-600 focus:outline-none"
+            >
+                <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+            </button>
+        </div>
+        
+        <div class="flex gap-3">
+            <button onclick="handleAuth(false)" class="bg-blue-600 hover:bg-blue-700 transition text-white px-4 py-2 rounded font-medium flex-1">Login</button>
+            <button onclick="handleAuth(true)" class="bg-green-500 hover:bg-green-600 transition text-white px-4 py-2 rounded font-medium flex-1">Daftar</button>
+        </div>
+    </div>
+
+    <!-- Halaman Notepad -->
+    <div id="notepad-page" class="hidden max-w-2xl mx-auto mt-10 bg-white p-6 rounded-lg shadow-md">
+        <div class="flex justify-between mb-4 items-center pb-4 border-b">
+            <h2 class="text-xl font-bold text-gray-800">Catatan Saya</h2>
+            <div class="flex gap-4 items-center">
+                <button onclick="logout()" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Logout</button>
+                <span class="text-gray-300">|</span>
+                <button onclick="deleteAccount()" class="text-red-500 hover:text-red-700 text-sm font-medium">Hapus Akun</button>
+            </div>
+        </div>
+        <textarea id="note-area" class="w-full h-64 p-4 border border-gray-300 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-gray-50" placeholder="Ketik apa saja yang ingin Anda simpan di sini..."></textarea>
+        <button onclick="saveNote()" class="bg-blue-600 hover:bg-blue-700 transition text-white px-6 py-3 rounded w-full font-bold shadow-sm">Simpan Catatan</button>
+    </div>
+</body>
+</html>
+  
