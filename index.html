@@ -41,7 +41,12 @@
                 notepadPage.classList.add('hidden');
             }
         });
-
+function togglePassword() {
+    const passwordInput = document.getElementById('password');
+    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+    passwordInput.setAttribute('type', type);
+        }
+        
         window.handleAuth = async (isRegister) => {
             try {
                 if (isRegister) await createUserWithEmailAndPassword(auth, emailInput.value, passInput.value);
